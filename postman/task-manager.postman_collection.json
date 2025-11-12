@@ -1,0 +1,284 @@
+{
+  "info": {
+    "_postman_id": "d27d21d7-74df-4c38-8ecd-55a6cd5b7334",
+    "name": "Viamagus Task Manager",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "pm.collectionVariables.set('token', jsonData.accessToken || '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"pass123\"\n}"
+            },
+            "url": {
+              "raw": "{{host}}/auth/login",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Teams",
+      "item": [
+        {
+          "name": "Create Team",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Platform Team\",\n  \"description\": \"Owns the internal tooling backlog\",\n  \"members\": [\n    {\n      \"name\": \"Aisha Verma\",\n      \"email\": \"aisha@example.com\",\n      \"role\": \"Project Manager\"\n    },\n    {\n      \"name\": \"Nikhil Rao\",\n      \"email\": \"nikhil@example.com\",\n      \"role\": \"Engineer\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{host}}/teams",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "teams"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Teams",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{host}}/teams",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "teams"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Add Team Member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sana Dutta\",\n  \"email\": \"sana@example.com\",\n  \"role\": \"QA\"\n}"
+            },
+            "url": {
+              "raw": "{{host}}/teams/{{teamId}}/members",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "teams",
+                "{{teamId}}",
+                "members"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Tasks",
+      "item": [
+        {
+          "name": "Create Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Ship weekly release\",\n  \"description\": \"Prep changelog, run regression tests\",\n  \"dueDate\": \"2025-01-20T09:00:00.000Z\",\n  \"status\": \"PENDING\",\n  \"assigneeId\": \"{{memberId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{host}}/tasks",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "tasks"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{host}}/tasks",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "tasks"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Task Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"IN_PROGRESS\",\n  \"dueDate\": \"2025-01-22T09:00:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{host}}/tasks/{{taskId}}",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign/Reassign Task",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teamMemberId\": \"{{memberId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{host}}/tasks/{{taskId}}/assign",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "assign"
+              ]
+            } 
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "host",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "teamId",
+      "value": ""
+    },
+    {
+      "key": "taskId",
+      "value": ""
+    },
+    {
+      "key": "memberId",
+      "value": ""
+    }
+  ]
+}
