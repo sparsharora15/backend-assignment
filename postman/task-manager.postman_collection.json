@@ -194,6 +194,60 @@
           "response": []
         },
         {
+          "name": "Get Task By Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{host}}/tasks/{{taskId}}",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks By Assignee",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{host}}/tasks/assignees/{{memberId}}?status=PENDING",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "tasks",
+                "assignees",
+                "{{memberId}}"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING",
+                  "description": "Optional TaskStatus filter"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Update Task Status",
           "request": {
             "method": "PATCH",
@@ -252,7 +306,31 @@
                 "{{taskId}}",
                 "assign"
               ]
-            } 
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Complete Task",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{host}}/tasks/{{taskId}}/complete",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "complete"
+              ]
+            }
           },
           "response": []
         }

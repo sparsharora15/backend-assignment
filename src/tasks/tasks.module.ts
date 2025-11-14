@@ -5,10 +5,11 @@ import { TasksController } from './tasks.controller';
 import { Task } from './entities/task.entity';
 import { TeamMember } from '../teams/entities/team-member.entity';
 import { Team } from '../teams/entities/team.entity';
+import { TaskRelationsService } from './services/task-relations.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Task, TeamMember, Team])],
   controllers: [TasksController],
-  providers: [TasksService],
+  providers: [TasksService, TaskRelationsService],
 })
 export class TasksModule {}

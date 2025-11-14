@@ -7,8 +7,10 @@ NestJS + TypeORM implementation of the Viamagus assignment. It exposes secure AP
 - JWT-based authentication with configurable demo credentials stored in `.env`
 - Team management (create teams, list teams, add members later)
 - Task management (create, update, assign, list with assignee + team context)
+- Dedicated task completion endpoint plus filtered task listings per assignee
 - TypeORM models for `Team`, `TeamMember`, and `Task` with relational integrity
 - Request validation via `class-validator`/`class-transformer`
+- Consistent error envelopes through a global HTTP exception filter
 - Ready-to-import Postman collection for quick testing
 
 ## Tech Stack
@@ -56,8 +58,7 @@ Response:
 ```json
 {
   "accessToken": "<JWT>",
-  "tokenType": "Bearer",
-  "expiresIn": "3600s"
+  "tokenType": "Bearer"
 }
 ```
 Use the returned token in the `Authorization: Bearer <token>` header for subsequent calls.
@@ -74,14 +75,23 @@ Use the returned token in the `Authorization: Bearer <token>` header for subsequ
 | POST | `/tasks` | Create a task; accepts optional `assigneeId`, `teamId`, `dueDate`, `status` |
 | GET | `/tasks` | List every task including its assignee + team |
 | GET | `/tasks/:id` | Fetch a single task with relations |
+| GET | `/tasks/assignees/:teamMemberId` | List tasks assigned to a member (optionally filter by status) |
 | PATCH | `/tasks/:id` | Update task properties such as status, due date, or reassignment |
 | PATCH | `/tasks/:id/assign` | Assign/reassign a task to a team member |
+| PATCH | `/tasks/:id/complete` | Mark the task status as `COMPLETED` |
 
 ### Task Payload Notes
 
 - `status` enum: `PENDING`, `IN_PROGRESS`, `COMPLETED`, `BLOCKED`.
 - `dueDate` should be an ISO-8601 string (`2025-01-30T12:00:00Z`).
 - When `assigneeId` is provided, the task automatically inherits the member's team. Passing both `teamId` and `assigneeId` enforces that the member belongs to that team.
+- Use `PATCH /tasks/:id/complete` as a shortcut to close tasks without sending a body payload.
+
+## Contribution Guidelines
+
+- Follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages, for example `feat(tasks): add endpoint to complete tasks`.
+- Group related changes into a single commit and include context in the body when non-obvious.
+- Run `npm run lint` and `npm run build` before opening a PR to ensure type-safety and consistent formatting.
 
 ## Postman Collection
 

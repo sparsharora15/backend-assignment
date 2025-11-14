@@ -13,7 +13,7 @@ export class TeamMember {
   @Column()
   name: string;
 
-  @Index({ unique: true })
+  @Index()
   @Column()
   email: string;
 

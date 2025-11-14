@@ -1,30 +1,27 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { Task, TaskStatus } from './entities/task.entity';
-import { TeamMember } from '../teams/entities/team-member.entity';
-import { Team } from '../teams/entities/team.entity';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { TaskRelationsService } from './services/task-relations.service';
+import { TaskMapper } from './mappers/task.mapper';
+import { TaskResponseDto } from './dto/task-response.dto';
+import { TaskRelations } from './interfaces/task-relations.interface';
+import { TaskFiltersDto } from './dto/task-filters.dto';
 
 @Injectable()
 export class TasksService {
   constructor(
     @InjectRepository(Task)
     private readonly taskRepository: Repository<Task>,
-    @InjectRepository(TeamMember)
-    private readonly teamMemberRepository: Repository<TeamMember>,
-    @InjectRepository(Team)
-    private readonly teamRepository: Repository<Team>,
+    private readonly taskRelationsService: TaskRelationsService,
   ) {}
 
-  async create(createTaskDto: CreateTaskDto) {
-    const { assignee, team } = await this.resolveRelations(createTaskDto);
+  async create(createTaskDto: CreateTaskDto): Promise<TaskResponseDto> {
+    const relations =
+      await this.taskRelationsService.resolveFromDto(createTaskDto);
     const now = new Date();
     const task = this.taskRepository.create({
       id: randomUUID(),
@@ -34,51 +31,130 @@ export class TasksService {
         ? new Date(createTaskDto.dueDate)
         : undefined,
       status: createTaskDto.status ?? TaskStatus.PENDING,
-      assigneeId: assignee?.id,
-      teamId: team?.id ?? assignee?.teamId,
+      assigneeId: relations.assignee?.id,
+      teamId:
+        createTaskDto.teamId ??
+        relations.team?.id ??
+        relations.assignee?.teamId,
       createdAt: now,
       updatedAt: now,
     });
+    const validatedRelations = await this.validateTaskRelations(
+      task,
+      relations,
+    );
     const saved = await this.taskRepository.save(task);
-    const resolvedTeamRecord =
-      team ??
-      (task.teamId
-        ? await this.teamRepository.findOne({ where: { id: task.teamId } })
-        : undefined);
-    const normalizedTeam = resolvedTeamRecord ?? undefined;
-    return this.hydrateTask(saved, assignee, normalizedTeam);
+    const hydratedRelations = await this.taskRelationsService.loadRelations(
+      saved,
+      validatedRelations,
+    );
+    return TaskMapper.toResponse(saved, hydratedRelations);
   }
 
-  async findAll() {
+  async findAll(): Promise<TaskResponseDto[]> {
     const tasks = await this.taskRepository.find({
       order: {
         dueDate: 'ASC',
         createdAt: 'DESC',
       },
     });
-    return Promise.all(tasks.map((task) => this.hydrateTask(task)));
+    const hydrated = await Promise.all(
+      tasks.map(async (task) => ({
+        task,
+        relations: await this.taskRelationsService.loadRelations(task),
+      })),
+    );
+    return TaskMapper.toResponseList(hydrated);
   }
 
-  async findOne(id: string) {
-    const task = await this.taskRepository.findOne({
-      where: { id },
-    });
-    if (!task) {
-      throw new NotFoundException(`Task with id ${id} was not found`);
-    }
-    return this.hydrateTask(task);
+  async findOne(id: string): Promise<TaskResponseDto> {
+    const task = await this.getTaskOrThrow(id);
+    const relations = await this.taskRelationsService.loadRelations(task);
+    return TaskMapper.toResponse(task, relations);
   }
 
-  async update(id: string, updateTaskDto: UpdateTaskDto) {
-    const task = await this.taskRepository.findOne({
-      where: { id },
+  async update(
+    id: string,
+    updateTaskDto: UpdateTaskDto,
+  ): Promise<TaskResponseDto> {
+    const task = await this.getTaskOrThrow(id);
+    const relations =
+      await this.taskRelationsService.resolveFromDto(updateTaskDto);
+
+    this.applyUpdates(task, updateTaskDto, relations);
+    const validatedRelations = await this.validateTaskRelations(
+      task,
+      relations,
+    );
+    task.updatedAt = new Date();
+    const saved = await this.taskRepository.save(task);
+    const hydratedRelations = await this.taskRelationsService.loadRelations(
+      saved,
+      validatedRelations,
+    );
+    return TaskMapper.toResponse(saved, hydratedRelations);
+  }
+
+  async assign(taskId: string, teamMemberId: string): Promise<TaskResponseDto> {
+    const task = await this.getTaskOrThrow(taskId);
+    const assignee =
+      await this.taskRelationsService.getTeamMemberOrThrow(teamMemberId);
+    task.assigneeId = assignee.id;
+    task.teamId = assignee.teamId;
+    const validatedRelations = await this.validateTaskRelations(task, {
+      assignee,
     });
-    if (!task) {
-      throw new NotFoundException(`Task with id ${id} was not found`);
-    }
+    task.updatedAt = new Date();
+    const saved = await this.taskRepository.save(task);
+    const relations = await this.taskRelationsService.loadRelations(
+      saved,
+      validatedRelations,
+    );
+    return TaskMapper.toResponse(saved, relations);
+  }
 
-    const { assignee, team } = await this.resolveRelations(updateTaskDto);
+  async complete(taskId: string): Promise<TaskResponseDto> {
+    const task = await this.getTaskOrThrow(taskId);
+    task.status = TaskStatus.COMPLETED;
+    const validatedRelations = await this.validateTaskRelations(task, {});
+    task.updatedAt = new Date();
+    const saved = await this.taskRepository.save(task);
+    const relations = await this.taskRelationsService.loadRelations(
+      saved,
+      validatedRelations,
+    );
+    return TaskMapper.toResponse(saved, relations);
+  }
 
+  async findByAssignee(
+    assigneeId: string,
+    filters: TaskFiltersDto,
+  ): Promise<TaskResponseDto[]> {
+    const assignee =
+      await this.taskRelationsService.getTeamMemberOrThrow(assigneeId);
+    const tasks = await this.taskRepository.find({
+      where: {
+        assigneeId: assignee.id,
+        ...(filters.status ? { status: filters.status } : {}),
+      },
+      order: { dueDate: 'ASC', createdAt: 'DESC' },
+    });
+    const hydrated = await Promise.all(
+      tasks.map(async (task) => ({
+        task,
+        relations: await this.taskRelationsService.loadRelations(task, {
+          assignee,
+        }),
+      })),
+    );
+    return TaskMapper.toResponseList(hydrated);
+  }
+
+  private applyUpdates(
+    task: Task,
+    updateTaskDto: UpdateTaskDto,
+    relations: TaskRelations,
+  ): void {
     if (updateTaskDto.title !== undefined) {
       task.title = updateTaskDto.title;
     }
@@ -94,138 +170,61 @@ export class TasksService {
       task.status = updateTaskDto.status;
     }
 
-    if (updateTaskDto.teamId !== undefined || team) {
-      const targetTeamId = team?.id ?? updateTaskDto.teamId ?? task.teamId;
-      if (!targetTeamId) {
-        task.teamId = undefined;
-      } else {
-        task.teamId = targetTeamId;
-      }
-    }
-    if (updateTaskDto.assigneeId !== undefined || assignee) {
-      const nextAssignee = assignee ?? undefined;
-      if (nextAssignee) {
-        task.assigneeId = nextAssignee.id;
-        task.teamId = nextAssignee.teamId;
-      }
+    if (relations.team) {
+      task.teamId = relations.team.id;
+    } else if (updateTaskDto.teamId !== undefined) {
+      task.teamId = updateTaskDto.teamId;
     }
 
-    if (task.assigneeId && task.teamId === undefined) {
-      const member = await this.teamMemberRepository.findOne({
-        where: { id: task.assigneeId },
-      });
-      task.teamId = member?.teamId ?? task.teamId;
+    if (relations.assignee) {
+      task.assigneeId = relations.assignee.id;
+      task.teamId = relations.assignee.teamId;
+    } else if (updateTaskDto.assigneeId !== undefined) {
+      task.assigneeId = updateTaskDto.assigneeId;
     }
-
-    if (task.assigneeId && task.teamId) {
-      const member = await this.teamMemberRepository.findOne({
-        where: { id: task.assigneeId },
-      });
-      if (member && member.teamId !== task.teamId) {
-        throw new BadRequestException(
-          'Assignee must belong to the same team as the task',
-        );
-      }
-    }
-
-    task.updatedAt = new Date();
-    const saved = await this.taskRepository.save(task);
-    return this.hydrateTask(saved);
   }
 
-  async assign(taskId: string, teamMemberId: string) {
-    const task = await this.taskRepository.findOne({ where: { id: taskId } });
-    if (!task) {
-      throw new NotFoundException(`Task with id ${taskId} was not found`);
-    }
-    const member = await this.teamMemberRepository.findOne({
-      where: { id: teamMemberId },
-    });
-    if (!member) {
-      throw new NotFoundException(
-        `Team member with id ${teamMemberId} was not found`,
-      );
-    }
-    task.assigneeId = member.id;
-    task.teamId = member.teamId;
-    task.updatedAt = new Date();
-    const saved = await this.taskRepository.save(task);
-    const team = await this.teamRepository.findOne({
-      where: { id: member.teamId },
-    });
-    return this.hydrateTask(saved, member, team ?? undefined);
-  }
-
-  private async resolveRelations(dto: {
-    assigneeId?: string;
-    teamId?: string;
-  }) {
-    let assignee: TeamMember | undefined;
-    let team: Team | undefined;
-
-    if (dto.assigneeId) {
-      const foundAssignee = await this.teamMemberRepository.findOne({
-        where: { id: dto.assigneeId },
-      });
-      if (!foundAssignee) {
-        throw new NotFoundException(
-          `Team member with id ${dto.assigneeId} was not found`,
-        );
-      }
-      assignee = foundAssignee;
-    }
-
-    if (dto.teamId) {
-      const foundTeam = await this.teamRepository.findOne({
-        where: { id: dto.teamId },
-      });
-      if (!foundTeam) {
-        throw new NotFoundException(`Team with id ${dto.teamId} was not found`);
-      }
-      team = foundTeam;
-    }
-
-    if (assignee && !team && assignee.teamId) {
-      const inferredTeam = await this.teamRepository.findOne({
-        where: { id: assignee.teamId },
-      });
-      team = inferredTeam ?? undefined;
-    }
-
-    if (assignee && team && assignee.teamId !== team.id) {
-      throw new BadRequestException(
-        'Assignee must belong to the provided team',
-      );
-    }
-
-    return { assignee, team };
-  }
-
-  private async hydrateTask(
+  private async validateTaskRelations(
     task: Task,
-    existingAssignee?: TeamMember,
-    existingTeam?: Team,
-  ) {
-    let assignee: TeamMember | undefined = existingAssignee;
-    if (!assignee && task.assigneeId) {
-      const fetchedAssignee = await this.teamMemberRepository.findOne({
-        where: { id: task.assigneeId },
-      });
-      assignee = fetchedAssignee ?? undefined;
+    relations: TaskRelations,
+  ): Promise<TaskRelations> {
+    const enriched: TaskRelations = { ...relations };
+
+    if (task.assigneeId) {
+      if (!enriched.assignee || enriched.assignee.id !== task.assigneeId) {
+        enriched.assignee =
+          await this.taskRelationsService.getTeamMemberOrThrow(task.assigneeId);
+      }
+    } else {
+      enriched.assignee = undefined;
     }
 
-    let team: Team | undefined = existingTeam;
-    if (!team && task.teamId) {
-      const fetchedTeam = await this.teamRepository.findOne({
-        where: { id: task.teamId },
-      });
-      team = fetchedTeam ?? undefined;
+    if (task.teamId) {
+      if (!enriched.team || enriched.team.id !== task.teamId) {
+        enriched.team = await this.taskRelationsService.getTeamOrThrow(
+          task.teamId,
+        );
+      }
+    } else {
+      enriched.team = undefined;
     }
 
-    return {
-      ...task,
-      assignee,
-      team,
-    };
+    if (task.assigneeId && task.teamId && enriched.assignee) {
+      await this.taskRelationsService.ensureMembershipConsistency(
+        enriched.assignee,
+        task.teamId,
+        enriched.team,
+      );
+    }
+
+    return enriched;
+  }
+
+  private async getTaskOrThrow(id: string): Promise<Task> {
+    const task = await this.taskRepository.findOne({ where: { id } });
+    if (!task) {
+      throw new NotFoundException(`Task with id ${id} was not found`);
+    }
+    return task;
   }
 }

@@ -16,9 +16,7 @@ describe('AppController', () => {
 
   describe('root', () => {
     it('should return default status message', () => {
-      expect(appController.getHello()).toBe(
-        'Task management API is running',
-      );
+      expect(appController.getHello()).toBe('Task management API is running');
     });
   });
 });

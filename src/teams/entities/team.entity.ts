@@ -11,7 +11,7 @@ export class Team {
   @Column()
   id: string;
 
-  @Index({ unique: true })
+  @Index()
   @Column()
   name: string;
 
